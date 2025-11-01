@@ -1,0 +1,14 @@
+{
+  "name": "x402-sentinel",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "servers/*",
+    "sdk",
+    "agents/*"
+  ],
+  "scripts": {
+    "build": "npm -ws run build",
+    "dev": "npm -ws run dev"
+  }
+}

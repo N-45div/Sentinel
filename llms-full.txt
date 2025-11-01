@@ -1,0 +1,2050 @@
+# Introduction (/docs)
+
+## Getting started
+
+xmcp is the easiest and fastest way to build an MCP server. It automatically handles registering tools, prompts and resources. There's no extra setup needed, and it provides a complete toolkit for building production ready MCP servers.
+
+<Callout variant="info">
+  If you're using these docs in an LLM, access [llms-full.txt](./llms-full.txt)
+  for the complete documentation context to get started quickly.
+</Callout>
+
+You can get started by [bootstrapping a new application](/docs/getting-started/installation) from scratch, or you can plug into your existing [Next.js](/docs/integrations/nextjs) or [Express](/docs/integrations/express) app.
+
+
+# Express (/docs/adapters/express)
+
+## Installation
+
+`xmcp` can work on top of your existing Express project. To get started, run the following command in your project directory:
+
+```bash
+npx init-xmcp@latest
+```
+
+After setting up the project, your build and dev command should look like this:
+
+```json
+{
+  "scripts": {
+    "dev": "xmcp dev & existing-build-command",
+    "build": "xmcp build && existing-build-command"
+  }
+}
+```
+
+When running `dev` or `build` command, `xmcp` will bundle your tools into `.xmcp/adapter`.
+
+You should add the `/mcp` endpoint in your existing server.
+
+```typescript
+import { xmcpHandler } from "path/to/.xmcp/adapter";
+
+app.get("/mcp", xmcpHandler);
+
+app.post("/mcp", xmcpHandler);
+```
+
+<Callout variant="info">
+  `middleware.ts`
+
+   is not supported in this mode.
+</Callout>
+
+
+# Next.js (/docs/adapters/nextjs)
+
+## Installation
+
+`xmcp` can work on top of your existing Next.js project. To get started, run the following command in your project directory:
+
+```bash
+npx init-xmcp@latest
+```
+
+On initialization, you'll see the following prompts:
+
+<TerminalPrompt>
+  {
+      "? Tools directory path: (tools)\n? Prompts directory path: (prompts)\n? Resources directory path: (resources)\n? Route directory path: (app/mcp)"
+  }
+</TerminalPrompt>
+
+The package manager and framework will be detected automatically.
+
+After setting up the project, your build and dev commands should look like this:
+
+```json
+{
+  "scripts": {
+    "dev": "xmcp dev & next dev",
+    "build": "xmcp build && next build"
+  }
+}
+```
+
+Based on your configuration, it will create the tools, prompts, resources and route folders and add an endpoint to your Next.js app.
+
+```typescript title="app/mcp/route.ts"
+import { xmcpHandler } from "@xmcp/adapter";
+
+export { xmcpHandler as GET, xmcpHandler as POST };
+```
+
+<Callout variant="info">
+  `middleware.ts` and `xmcp/headers` are not supported since Next.js already
+  supports those features.
+</Callout>
+
+## Authentication
+
+You can use the `withAuth` function to add authentication to your MCP server.
+
+```typescript title="app/mcp/route.ts"
+import { xmcpHandler, withAuth, VerifyToken } from "@xmcp/adapter";
+
+/**
+ * Verify the bearer token and return auth information
+ * In a real implementation, this would validate against your auth service
+ */
+const verifyToken: VerifyToken = async (req: Request, bearerToken?: string) => {
+  if (!bearerToken) return undefined;
+
+  // TODO: Replace with actual token verification logic
+  // This is just an example implementation
+  const isValid = bearerToken.startsWith("__TEST_VALUE__");
+
+  if (!isValid) return undefined;
+
+  return {
+    token: bearerToken,
+    scopes: ["read:messages", "write:messages"],
+    clientId: "example-client",
+    extra: {
+      userId: "user-123",
+      // Add any additional user/client information here
+      permissions: ["user"],
+      timestamp: new Date().toISOString(),
+    },
+  };
+};
+
+const options = {
+  verifyToken,
+  required: true,
+  requiredScopes: ["read:messages"],
+  resourceMetadataPath: "/.well-known/oauth-protected-resource",
+};
+
+const handler = withAuth(xmcpHandler, options);
+
+export { handler as GET, handler as POST };
+```
+
+
+# API Key (/docs/authentication/api-key)
+
+To enable API key authentication, you can use the `apiKeyAuthMiddleware` middleware on your app.
+
+```typescript title="src/middleware.ts"
+import { apiKeyAuthMiddleware, type Middleware } from "xmcp";
+
+const middleware: Middleware = [
+  apiKeyAuthMiddleware({
+    headerName: "x-api-key",
+    apiKey: "12345",
+  }),
+  // ... other middlewares
+];
+
+export default middleware;
+```
+
+If no `headerName` is provided, the middleware will default to `x-api-key`.
+
+This middleware can also be used with a validation function. It should **return a boolean** value indicating if the API key is valid.
+
+```typescript title="src/middleware.ts"
+import { apiKeyAuthMiddleware, type Middleware } from "xmcp";
+
+const middleware: Middleware = apiKeyAuthMiddleware({
+  headerName: "x-api-key",
+  validateApiKey: async (apiKey) => {
+    return apiKey === "12345";
+  },
+});
+
+export default middleware;
+```
+
+Next time you connect to your MCP server, you'll need to provide the API key in the `x-api-key` header (or the name you specified in the middleware).
+
+Your connection object will look like this:
+
+```json
+{
+  "mcpServers": {
+    "my-project": {
+      "url": "http://localhost:3001/mcp",
+      "headers": {
+        "x-api-key": "12345" // <- This is the API key you provided in the middleware
+      }
+    }
+  }
+}
+```
+
+Make sure to check the [connecting](/docs/getting-started/connecting) documentation for more details on the different clients.
+
+
+# JSON Web Token (/docs/authentication/jwt)
+
+To enable JWT authentication, you can use the `jwtAuthMiddleware` middleware on your app.
+
+```typescript title="src/middleware.ts"
+import { jwtAuthMiddleware, type Middleware } from "xmcp";
+
+const middleware: Middleware = [
+  jwtAuthMiddleware({
+    secret: process.env.JWT_SECRET!,
+    algorithms: ["HS256"],
+  }),
+  // ... other middlewares
+];
+
+export default middleware;
+```
+
+You can customize the middleware using the configuration object containing the JWT secret and verify options.
+
+```typescript
+const middleware = jwtAuthMiddleware({
+  secret: process.env.JWT_SECRET!,
+  algorithms: ["HS256"],
+  issuer: "https://example.com",
+  audience: "https://example.com",
+  subject: "user-id",
+  expiresIn: "1h",
+  notBefore: "1h",
+  clockTolerance: 30,
+});
+```
+
+Check out the [jsonwebtoken](https://www.npmjs.com/package/jsonwebtoken) library for more details on the configuration options.
+
+
+# OAuth (/docs/authentication/oauth)
+
+<Callout variant="warning">
+  This is an experimental feature and may not work as expected.
+</Callout>
+
+The OAuth provider implementation strictly implements Dynamic Client Registration.
+
+You can configure the OAuth provider by adding the following to your `xmcp.config.ts` file:
+
+```typescript title="xmcp.config.ts"
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  experimental: {
+    oauth: {
+      baseUrl: "https://my-app.com",
+      endpoints: {
+        authorizationUrl: "https://auth-provider.com/oauth/authorize",
+        tokenUrl: "https://auth-provider.com/oauth/token",
+        registerUrl: "https://auth-provider.com/oauth/register", // mandatory
+      },
+      issuerUrl: "https://my-app.com",
+      defaultScopes: ["openid", "profile", "email"],
+      pathPrefix: "/oauth2",
+    },
+  },
+};
+
+export default config;
+```
+
+The usage of this configuration is only limited to the HTTP transport on apps scaffolded with `create-xmcp-app`, not with the adapter modes.
+
+
+# Custom Directories (/docs/configuration/custom-directories)
+
+Customize where `xmcp` looks for tools, prompts, and resources by configuring the `paths` option. If not specified, these are the defaults:
+
+```typescript title="xmcp.config.ts"
+const config: XmcpConfig = {
+  paths: {
+    tools: "src/tools",
+    prompts: "src/prompts",
+    resources: "src/resources",
+  },
+};
+
+export default config;
+```
+
+## Disabling directories
+
+To disable a specific directory, set it to `false`:
+
+```typescript title="xmcp.config.ts"
+const config: XmcpConfig = {
+  paths: {
+    tools: "src/tools",
+    prompts: false, // Prompts directory disabled
+    resources: "src/resources",
+  },
+};
+
+export default config;
+```
+
+## Troubleshooting
+
+If you delete a directory without updating the config, `xmcp` will throw an error and prompt you to update it.
+
+
+# Transports (/docs/configuration/transports)
+
+## HTTP transport
+
+The `http` configuration customizes the HTTP server. Set it to `true` to use defaults, or provide an object to override specific options:
+
+```typescript title="xmcp.config.ts"
+const config: XmcpConfig = {
+  http: {
+    port: 3001,
+    host: "127.0.0.1",
+    endpoint: "/mcp",
+    bodySizeLimit: 10485760, // 10MB
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"],
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "mcp-session-id",
+        "mcp-protocol-version",
+      ],
+      exposedHeaders: ["Content-Type", "Authorization", "mcp-session-id"],
+      credentials: false,
+      maxAge: 86400,
+    },
+    debug: false, // adds extra logging to the console
+  },
+};
+
+export default config;
+```
+
+These are the default values. Override only what you need to customize.
+
+## STDIO transport
+
+The `stdio` configuration customizes the STDIO transport. Set it to `true` to use defaults, or provide an object to override specific options:
+
+By default you enable STDIO transport by setting it to `true`.
+
+```typescript title="xmcp.config.ts"
+const config: XmcpConfig = {
+  stdio: true,
+};
+```
+
+You can also customize the debug mode and this would enable it as well.
+
+```typescript title="xmcp.config.ts"
+const config: XmcpConfig = {
+  stdio: {
+    debug: false, // adds extra logging to the console
+  },
+};
+```
+
+## Troubleshooting
+
+Keep in mind that clients like Claude Desktop are not compatible with STDIO logging and would cause a JSON parsing error.
+
+
+# Webpack (/docs/configuration/webpack)
+
+`xmcp` uses webpack and swc to bundle your tools. You can customize the configuration by adding the following to your `xmcp.config.ts` file:
+
+```typescript title="xmcp.config.ts"
+const config: XmcpConfig = {
+  webpack: (config) => {
+    // Add raw loader for images to get them as base64
+    config.module?.rules?.push({
+      test: /\.(png|jpe?g|gif|svg|webp)$/i,
+      type: "asset/inline",
+    });
+
+    return config;
+  },
+};
+```
+
+
+# Middlewares (/docs/core-concepts/middlewares)
+
+Middlewares intercept HTTP requests and responses, enabling authentication, rate limiting, and other processing tasks.
+
+Create a `src/middleware.ts` file to define your middleware:
+
+```typescript title="src/middleware.ts"
+import { type Middleware } from "xmcp";
+
+const middleware: Middleware = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!customHeaderValidation(authHeader)) {
+    res.status(401).json({ error: "Invalid API key" });
+    return;
+  }
+
+  return next();
+};
+
+export default middleware;
+```
+
+<Callout variant="info">
+  xmcp provides built-in middlewares for common tasks like [API key
+  authentication](../../authentication/api-key) and [JSON web token
+  authentication](../../authentication/jwt).
+</Callout>
+
+## Chaining middlewares
+
+Define multiple middlewares as an array to chain them in sequence:
+
+```typescript title="src/middleware.ts"
+import { type Middleware } from "xmcp";
+
+const middleware: Middleware = [
+  async (req, res, next) => {
+    // First middleware
+    return next();
+  },
+  async (req, res, next) => {
+    // Second middleware
+    return next();
+  },
+];
+
+export default middleware;
+```
+
+## Accessing headers
+
+Use the `xmcp/headers` module to read request headers in your tools, prompts, or resources—useful for API keys, authentication tokens, and other custom headers.
+
+```typescript title="src/tools/search.ts"
+import { headers } from "xmcp/headers";
+
+export default async function search({ query }: InferSchema<typeof schema>) {
+  const requestHeaders = headers();
+  const apiKey = requestHeaders["x-api-key"];
+
+  const data = await fetchSomeData(apiKey);
+
+  return JSON.stringify(data);
+}
+```
+
+
+# Prompts (/docs/core-concepts/prompts)
+
+`xmcp` detects files under the `/src/prompts/` directory and registers them as prompts. This path can be configured in the `xmcp.config.ts` file.
+
+The prompt file should export three elements:
+
+* **Schema**: The input parameters using Zod schemas.
+* **Metadata**: The prompt's identity and behavior hints.
+* **Default**: The prompt handler function.
+
+```typescript title="src/prompts/review-code.ts"
+import { z } from "zod";
+import { type InferSchema, type PromptMetadata } from "xmcp";
+
+// Define the schema for prompt parameters
+export const schema = {
+  code: z.string().describe("The code to review"),
+};
+
+// Define prompt metadata
+export const metadata: PromptMetadata = {
+  name: "review-code",
+  title: "Review Code",
+  description: "Review code for best practices and potential issues",
+  role: "user",
+};
+
+// Prompt implementation
+export default function reviewCode({ code }: InferSchema<typeof schema>) {
+  return {
+    type: "text",
+    text: `Please review this code for:
+      - Code quality and best practices
+      - Potential bugs or security issues
+      - Performance optimizations
+      - Readability and maintainability
+
+      Code to review:
+      \`\`\`
+      ${code}
+      \`\`\``,
+  };
+}
+```
+
+If you're returning a string or number only, you can shortcut the return value to be the string or number directly.
+
+```typescript
+export default function reviewCode({ code }: InferSchema<typeof schema>) {
+  return `Please review this code for:
+    - Code quality and best practices
+    - Potential bugs or security issues
+    - Performance optimizations
+    - Readability and maintainability
+
+    Code to review:
+    \`\`\`
+    ${code}
+    \`\`\``;
+  `;
+}
+```
+
+<Callout variant="info">
+  We encourage to use this shortcut for readability, and restrict the usage of
+  the content object type only for complex responses, like images, audio or
+  videos.
+</Callout>
+
+## References
+
+### Schema (optional)
+
+The schema object defines the prompt's parameters with:
+
+* **Key**: Parameter name.
+* **Value**: Zod schema with `.describe()` for documentation and prompt inspection. This will be visible through the inspector.
+* **Purpose**: Type validation and automatic parameter documentation.
+
+This is the exact same as the schema object for tools.
+
+### Metadata (optional)
+
+The metadata object provides:
+
+* **Name**: Unique identifier for the prompt
+* **Title**: Human-readable title for the prompt
+* **Description**: Brief explanation of what the prompt does
+* **Role**: The role of the prompt in the conversation. Can be either `user` or `assistant`.
+
+### Implementation (required)
+
+The default export function that performs the actual work.
+
+* **Parameters**: Automatically typed from your schema using the built-in `InferSchema`.
+* **Returns**: MCP-compatible response with content type.
+* **Async**: Supports async operations for API calls, file I/O, etc.
+
+
+# Resources (/docs/core-concepts/resources)
+
+`xmcp` automatically detects and registers files under the `/src/resources/` directory as resources. This path can be configured in your `xmcp.config.ts` file.
+
+Each resource file should export three elements:
+
+* **Schema**: Input parameters defined using Zod schemas
+* **Metadata**: The resource's identity and behavior configuration
+* **Default**: The resource handler function
+
+There are two types of resources: **static** and **dynamic**. When creating resources, it's important to understand how the folder structure determines the resource URI.
+
+## URI composition rules
+
+Each resource is uniquely identified by a URI composed from its file path using these rules:
+
+* The URI scheme is detected from folders with parentheses. For example, a parent folder named `(users)` creates the URI scheme `users`.
+* Static folders become literal path segments.
+* Brackets `[]` indicate dynamic parameters.
+
+For example, the following file path:
+
+```
+src/resources/(users)/[userId]/profile.ts
+```
+
+Will result in the URI `users://{userId}/profile`.
+
+## 1. Static resource
+
+Static resources are files that don't require any parameters. Following the composition rules above, the resource below will have the URI `config://app`:
+
+```typescript title="src/resources/(config)/app.ts"
+import { type ResourceMetadata } from "xmcp";
+
+export const metadata: ResourceMetadata = {
+  name: "app-config",
+  title: "Application Config",
+  description: "Application configuration data",
+};
+
+export default function handler() {
+  return "App configuration here";
+}
+```
+
+## 2. Dynamic resource
+
+Dynamic resources accept parameters. The example below creates a resource with the URI `users://{userId}/profile`:
+
+```typescript title="src/resources/(users)/[userId]/profile.ts"
+import { z } from "zod";
+import { type ResourceMetadata, type InferSchema } from "xmcp";
+
+export const schema = {
+  userId: z.string().describe("The ID of the user"),
+};
+
+export const metadata: ResourceMetadata = {
+  name: "user-profile",
+  title: "User Profile",
+  description: "User profile information",
+};
+
+export default function handler({ userId }: InferSchema<typeof schema>) {
+  return `Profile data for user ${userId}`;
+}
+```
+
+## References
+
+### Schema (optional)
+
+The schema object defines the resource's parameters with:
+
+* **Key**: Parameter name.
+* **Value**: Zod schema with `.describe()` for documentation and resource inspection. This will be visible through the inspector.
+* **Purpose**: Type validation and automatic parameter documentation.
+
+This is the exact same as the schema object for tools and prompts.
+
+### Metadata (optional)
+
+The metadata object provides:
+
+* **Name**: Unique identifier for the resource
+* **Title**: Human-readable title for the resource
+* **Description**: Brief explanation of what the resource does
+* **MimeType**: The MIME type of the resource
+* **Size**: The size of the resource
+
+### Implementation (required)
+
+The default export function that performs the actual work.
+
+* **Parameters**: Automatically typed from your schema using the built-in `InferSchema`.
+* **Returns**: MCP-compatible response with content type.
+
+
+# Tools (/docs/core-concepts/tools)
+
+`xmcp` detects files under the `/src/tools/` directory and registers them as tools. This path can be configured in the `xmcp.config.ts` file.
+
+A tool file consists of three main exports:
+
+* **Default**: The tool handler function.
+* **Schema** (optional): The input parameters using Zod schemas.
+* **Metadata** (optional): The tool's identity and behavior hints. If omitted, the name is inferred from the file name and the description defaults to a placeholder.
+
+```typescript title="src/tools/greet.ts"
+import { z } from "zod";
+import { type InferSchema } from "xmcp";
+
+// Define the schema for tool parameters
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+// Define tool metadata
+export const metadata = {
+  name: "greet",
+  description: "Greet the user",
+  annotations: {
+    title: "Greet the user",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+
+// Tool implementation
+export default async function greet({ name }: InferSchema<typeof schema>) {
+  const result = `Hello, ${name}!`;
+
+  return {
+    content: [{ type: "text", text: result }],
+  };
+}
+```
+
+If you're returning a string or number only, you can shortcut the return value to be the string or number directly.
+
+```typescript
+export default async function greet({ name }: InferSchema<typeof schema>) {
+  return `Hello, ${name}!`;
+}
+```
+
+<Callout variant="info">
+  We encourage to use this shortcut for readability, and restrict the usage of
+  the content array type only for complex responses, like images, audio or
+  videos.
+</Callout>
+
+## References
+
+### Schema (optional)
+
+Defines the tool's input parameters with type validation:
+
+* **Key**: Parameter name.
+* **Value**: Zod schema with `.describe()` for documentation and tool inspection.
+* **Purpose**: Type validation and automatic parameter documentation.
+
+### Metadata (optional)
+
+Defines the tool's identity and behavior hints:
+
+* **Name**: Unique identifier for the tool (defaults to file name if omitted)
+* **Description**: Brief explanation of what the tool does (defaults to placeholder if omitted)
+* **Annotations**: Behavioral hints for AI models and UIs
+
+<Callout variant="info">
+  While metadata is optional, we strongly recommend providing a clear
+  description. This helps LLMs discover and use your tools more efficiently,
+  reducing token costs and improving accuracy.
+</Callout>
+
+### Implementation (required)
+
+The default export function that performs the actual work:
+
+* **Parameters**: Automatically typed from your schema using the built-in `InferSchema`.
+* **Returns**: MCP-compatible response with content array, or a string/number shortcut.
+* **Async**: Supports async operations for API calls, file I/O, etc.
+
+
+# Vercel (/docs/deployment/vercel)
+
+First, bootstrap a new project with `npx create-xmcp-app@latest`.
+
+Then, [connect your Git repository](https://vercel.com/new) or [use Vercel CLI](https://vercel.com/docs/cli):
+
+```bash
+vc deploy
+```
+
+## Get started with Vercel CLI
+
+You can initialize a new xmcp app with Vercel CLI with the following command:
+
+```bash
+vc init xmcp
+```
+
+This will clone the [xmcp example repository](https://github.com/vercel/vercel/tree/main/examples/xmcp) in a directory called `xmcp`.
+
+Learn more about deploying xmcp to Vercel in the [Vercel documentation](https://vercel.com/docs/frameworks/backend/xmcp).
+
+
+# Connecting to your server (/docs/getting-started/connecting)
+
+At this point, you can configure to connect to your MCP server on clients like `Cursor` or `Claude Desktop`.
+Notice that, unless you start the development server, or have built your project for production, your server will not be shown available.
+
+## HTTP transport
+
+By default, xmcp will use the port `3001`. If you're using a different port, you can change it in your `xmcp.config.ts` file. Read more about configuring transports [here](../configuration/transports).
+
+### Cursor
+
+If you're using the HTTP transport with Cursor, your configuration should look like this:
+
+```json
+{
+  "mcpServers": {
+    "my-project": {
+      "url": "http://localhost:3001/mcp"
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+If you're using the HTTP transport with Claude Desktop, your configuration should look like this:
+
+```json
+{
+  "mcpServers": {
+    "my-project": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:3001/mcp"]
+    }
+  }
+}
+```
+
+## STDIO transport
+
+If you're using the STDIO transport, your configuration for local development should look like this:
+
+```json
+{
+  "mcpServers": {
+    "my-project": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/my-project/dist/stdio.js"]
+    }
+  }
+}
+```
+
+
+# Installation (/docs/getting-started/installation)
+
+## System requirements
+
+Before you begin, make sure your system meets the following requirements:
+
+* Node.js 20 or later.
+* macOS, Windows or Linux.
+
+## Automatic installation
+
+The quickest way to get started with xmcp is using `create-xmcp-app`. This CLI tool allows you to scaffold a template project with all the necessary files and dependencies to get you up and running quickly.
+
+To create an xmcp project, run:
+
+```bash
+npx create-xmcp-app@latest
+```
+
+On installation, you'll see the following prompts:
+
+<TerminalPrompt>
+  {
+      "? What is your project named? (my-xmcp-app)\n? Select a package manager: (Use arrow keys)\n❯ npm \n  yarn \n  pnpm \n  bun\n? Select the transport you want to use: (Use arrow keys)\n❯ HTTP (runs on a server) \n  STDIO (runs on the user's machine)\n? Select components to initialize: (Press <space> to select, <a> to toggle all, <i> to invert selection, and <enter> to proceed)\n❯◉ Tools\n ◉ Prompts\n ◉ Resources"
+  }
+</TerminalPrompt>
+
+After the prompts, create-xmcp-app will create a folder with your project name and install the required dependencies.
+
+## Manual installation
+
+To manually create an xmcp project, install the required dependencies:
+
+<TerminalTabs
+  tabs={[
+  {
+    label: "pnpm",
+    value: "pnpm",
+    content: "pnpm i xmcp zod@^3.25.76",
+  },
+  {
+    label: "npm",
+    value: "npm",
+    content: "npm i xmcp zod@^3.25.76",
+  },
+  {
+    label: "yarn",
+    value: "yarn",
+    content: "yarn add xmcp zod@^3.25.76",
+  },
+  {
+    label: "bun",
+    value: "bun",
+    content: "bun add xmcp zod@^3.25.76",
+  },
+]}
+  defaultTab="pnpm"
+/>
+
+Then add the following scripts to your package.json:
+
+```json title="package.json"
+{
+  "scripts": {
+    "dev": "xmcp dev",
+    "build": "xmcp build",
+    "start": "node dist/[transport].js"
+  }
+}
+```
+
+These scripts refer to the different stages of developing an application:
+
+* `xmcp dev`: Starts the development server. This listens for changes and automatically reloads the server.
+* `xmcp build`: Builds the application for production. This will create a `dist` directory with the compiled code.
+* `node dist/[transport].js`: Starts the production server. This is the server that will be used in production.
+
+You can then run the scripts based on the package manager you've set up.
+
+Based on the transport you've chosen when bootstrapping your project, the \[transport] placeholder will be replaced with the appropriate one.
+This is correlated with the `xmcp.config.ts` configuration.
+
+## Troubleshooting
+
+If you encounter issues when running the built server, make sure the transport is matching the configured one in `xmcp.config.ts`.
+
+If you're working with HTTP, your configuration should look like this:
+
+```typescript title="xmcp.config.ts"
+const config: XmcpConfig = {
+  http: true,
+};
+```
+
+If you're working with STDIO, your configuration should look like this:
+
+```typescript title="xmcp.config.ts"
+const config: XmcpConfig = {
+  stdio: true,
+};
+```
+
+You can have both transports configured, but you'll need to update the scripts to match them. For example, this is a valid script configuration you could use:
+
+```json title="package.json"
+{
+  "scripts": {
+    "start:http": "node dist/http.js",
+    "start:stdio": "node dist/stdio.js"
+  }
+}
+```
+
+
+# Project structure (/docs/getting-started/project-structure)
+
+## Overview
+
+A basic project structure is as follows:
+
+```
+my-project/
+├── src/
+│   ├── middleware.ts   # Middleware for http request/response processing
+│   └── tools/          # Tool files are auto-discovered here
+│       ├── greet.ts
+│       ├── search.ts
+│   └── prompts/          # Prompt files are auto-discovered here
+│       ├── review-code.ts
+│       ├── team-greeting.ts
+│   └── resources/      # Resource files are auto-discovered here
+│       ├── (config)/app.ts
+│       ├── (users)/[userId]/profile.ts
+├── dist/               # Built output (generated)
+├── package.json
+├── tsconfig.json
+└── xmcp.config.ts       # Configuration file for xmcp
+```
+
+## Top-level files
+
+There are the three top-level files that are required for your project:
+
+* `package.json`: Contains your project's dependencies and scripts.
+* `tsconfig.json`: Contains your project's TypeScript configuration.
+* `xmcp.config.ts`: Contains your project's xmcp configuration.
+
+## Source directory
+
+The `src/` directory houses your project's implementation. xmcp follows a declarative, file-system based approach—simply create a file in the appropriate directory, and it will be automatically discovered and registered.
+
+The optional `middleware.ts` file at the root of `src/` processes HTTP requests and responses. You can customize the location of `tools/`, `prompts/`, and `resources/` directories in your `xmcp.config.ts` file. See the [custom directories](../../configuration/custom-directories) documentation for details.
+
+<ConceptBoxes>
+  <ConceptBox title="Tools" description="Learn how to create and use tools in your xmcp project." href="/docs/core-concepts/tools" />
+
+  <ConceptBox title="Prompts" description="Discover how to define prompts for your AI interactions." href="/docs/core-concepts/prompts" />
+
+  <ConceptBox title="Resources" description="Understand how to expose data through resources." href="/docs/core-concepts/resources" />
+
+  <ConceptBox title="Middleware" description="Add custom logic to process requests and responses." href="/docs/core-concepts/middlewares" />
+</ConceptBoxes>
+
+
+# Better Auth (/docs/integrations/better-auth)
+
+## Overview
+
+The Better Auth plugin provides comprehensive authentication for your xmcp server using [Better Auth](https://www.better-auth.com/), supporting email/password authentication, OAuth providers, and session management.
+
+<Callout variant="info">
+  Currently supports PostgreSQL as the database provider.
+</Callout>
+
+## Installation
+
+Install the Better Auth plugin and PostgreSQL dependencies:
+
+```bash
+npm install @xmcp-dev/better-auth pg
+npm install -D @types/pg
+```
+
+## Database Setup
+
+Better Auth requires a PostgreSQL database with specific tables for user management, sessions, and OAuth applications.
+
+<Callout variant="info">
+  We recommend [Neon](https://neon.tech/) for easy PostgreSQL setup, especially
+  with Vercel's storage integration.
+</Callout>
+
+Run the following SQL script to create the necessary tables:
+
+```sql
+-- User table for storing user information
+CREATE TABLE "user" (
+  "id" text NOT NULL PRIMARY KEY,
+  "name" text NOT NULL,
+  "email" text NOT NULL UNIQUE,
+  "emailVerified" boolean NOT NULL,
+  "image" text,
+  "createdAt" timestamp NOT NULL,
+  "updatedAt" timestamp NOT NULL
+);
+
+-- Session table for managing user sessions
+CREATE TABLE "session" (
+  "id" text NOT NULL PRIMARY KEY,
+  "expiresAt" timestamp NOT NULL,
+  "token" text NOT NULL UNIQUE,
+  "createdAt" timestamp NOT NULL,
+  "updatedAt" timestamp NOT NULL,
+  "ipAddress" text,
+  "userAgent" text,
+  "userId" text NOT NULL REFERENCES "user" ("id")
+);
+
+-- Account table for OAuth and local authentication
+CREATE TABLE "account" (
+  "id" text NOT NULL PRIMARY KEY,
+  "accountId" text NOT NULL,
+  "providerId" text NOT NULL,
+  "userId" text NOT NULL REFERENCES "user" ("id"),
+  "accessToken" text,
+  "refreshToken" text,
+  "idToken" text,
+  "accessTokenExpiresAt" timestamp,
+  "refreshTokenExpiresAt" timestamp,
+  "scope" text,
+  "password" text,
+  "createdAt" timestamp NOT NULL,
+  "updatedAt" timestamp NOT NULL
+);
+
+-- Verification table for email verification and password resets
+CREATE TABLE "verification" (
+  "id" text NOT NULL PRIMARY KEY,
+  "identifier" text NOT NULL,
+  "value" text NOT NULL,
+  "expiresAt" timestamp NOT NULL,
+  "createdAt" timestamp,
+  "updatedAt" timestamp
+);
+
+-- OAuth application table for OAuth provider functionality
+CREATE TABLE "oauthApplication" (
+  "id" text NOT NULL PRIMARY KEY,
+  "name" text NOT NULL,
+  "icon" text,
+  "metadata" text,
+  "clientId" text NOT NULL UNIQUE,
+  "clientSecret" text,
+  "redirectURLs" text NOT NULL,
+  "type" text NOT NULL,
+  "disabled" boolean,
+  "userId" text,
+  "createdAt" timestamp NOT NULL,
+  "updatedAt" timestamp NOT NULL
+);
+
+-- OAuth access token table
+CREATE TABLE "oauthAccessToken" (
+  "id" text NOT NULL PRIMARY KEY,
+  "accessToken" text NOT NULL UNIQUE,
+  "refreshToken" text NOT NULL UNIQUE,
+  "accessTokenExpiresAt" timestamp NOT NULL,
+  "refreshTokenExpiresAt" timestamp NOT NULL,
+  "clientId" text NOT NULL,
+  "userId" text,
+  "scopes" text NOT NULL,
+  "createdAt" timestamp NOT NULL,
+  "updatedAt" timestamp NOT NULL
+);
+
+-- OAuth consent table for managing user consent
+CREATE TABLE "oauthConsent" (
+  "id" text NOT NULL PRIMARY KEY,
+  "clientId" text NOT NULL,
+  "userId" text NOT NULL,
+  "scopes" text NOT NULL,
+  "createdAt" timestamp NOT NULL,
+  "updatedAt" timestamp NOT NULL,
+  "consentGiven" boolean NOT NULL
+);
+```
+
+<Callout variant="info">
+  Schema generation through Better Auth's CLI is not currently supported. You
+  must run this SQL manually.
+</Callout>
+
+## Environment Variables
+
+Configure the following environment variables in your `.env` file:
+
+```bash
+# Database connection string
+DATABASE_URL=postgresql://<username>:<password>@<host>:<port>/<database>
+
+# Better Auth configuration
+BETTER_AUTH_SECRET=<your-secret-key>
+BETTER_AUTH_BASE_URL=<your-app-base-url>
+
+# Optional: OAuth provider credentials
+GOOGLE_CLIENT_ID=<your-google-client-id>
+GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+```
+
+<Callout variant="warning" icon="alertTriangle" title="Security">
+  Generate a strong, random secret for `BETTER_AUTH_SECRET`. This is used to
+  sign JWT tokens and must be kept secure.
+</Callout>
+
+## Configuration
+
+Create a `middleware.ts` file in your xmcp app root directory:
+
+```typescript title="src/middleware.ts"
+import { betterAuthProvider } from "@xmcp-dev/better-auth";
+import { Pool } from "pg";
+
+export default betterAuthProvider({
+  database: new Pool({
+    connectionString: process.env.DATABASE_URL,
+  }),
+  baseURL: process.env.BETTER_AUTH_BASE_URL || "http://127.0.0.1:3001",
+  secret: process.env.BETTER_AUTH_SECRET || "super-secret-key",
+  providers: {
+    emailAndPassword: {
+      enabled: true,
+    },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    },
+  },
+});
+```
+
+### Configuration Options
+
+* **`database`** - PostgreSQL Pool instance for database connections
+* **`baseURL`** - Base URL of your app for generating OAuth callback URLs
+* **`secret`** - Secret key for signing JWT tokens
+* **`providers`** - Authentication provider configuration
+
+## Authentication Providers
+
+### Email and Password
+
+Enable email/password authentication:
+
+```typescript
+export default betterAuthProvider({
+  // ... other config
+  providers: {
+    emailAndPassword: {
+      enabled: true,
+    },
+  },
+});
+```
+
+### Google OAuth
+
+To enable Google OAuth:
+
+1. Visit the [Google Cloud Console](https://console.cloud.google.com/apis/dashboard)
+2. Create or select a project
+3. Enable the Google+ API
+4. Create OAuth 2.0 credentials
+5. Set authorized redirect URI:
+   * Development: `http://localhost:3001/auth/callback/google`
+   * Production: `https://yourdomain.com/auth/callback/google`
+
+```typescript
+export default betterAuthProvider({
+  // ... other config
+  providers: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    },
+  },
+});
+```
+
+### Multiple Providers
+
+You can enable multiple authentication methods simultaneously:
+
+```typescript
+export default betterAuthProvider({
+  // ... other config
+  providers: {
+    emailAndPassword: {
+      enabled: true,
+    },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    },
+  },
+});
+```
+
+## Usage in Tools
+
+Access the authenticated user session in your xmcp tools using `getBetterAuthSession`:
+
+```typescript title="src/tools/get-user-profile.ts"
+import { getBetterAuthSession } from "@xmcp-dev/better-auth";
+
+export default async function getUserProfile() {
+  const session = await getBetterAuthSession();
+
+  return `Hello! Your user id is ${session.userId}`;
+}
+```
+
+<Callout variant="warning">
+  `getBetterAuthSession` will throw an error if called outside of a
+  `betterAuthProvider` middleware context.
+</Callout>
+
+## Login Page
+
+The authentication UI is automatically generated and available at:
+
+```
+http://host:port/auth/sign-in
+```
+
+This page handles both sign-in and sign-up functionality based on your provider configuration.
+
+## Next Steps
+
+After authentication is configured, users will be prompted to authenticate when establishing a connection to your MCP server.
+
+
+# MCP UI (/docs/integrations/mcp-ui)
+
+xmcp is compatible with [MCP UI](https://mcpui.dev), which can be used to build interactive interfaces for your MCP server.
+
+## Installation
+
+In your current xmcp project, install the following dependency:
+
+<TerminalTabs
+  tabs={[
+  {
+    label: "pnpm",
+    value: "pnpm",
+    content: "pnpm i @mcp-ui/server",
+  },
+  {
+    label: "npm",
+    value: "npm",
+    content: "npm i @mcp-ui/server",
+  },
+  {
+    label: "yarn",
+    value: "yarn",
+    content: "yarn add @mcp-ui/server",
+  },
+  {
+    label: "bun",
+    value: "bun",
+    content: "bun add @mcp-ui/server",
+  },
+]}
+  defaultTab="pnpm"
+/>
+
+## Create a UI resource
+
+You can create a UI resource for your MCP server using the `createUIResource` function. It allows you to define UI snippets on the server-side, which can then be seamlessly and securely rendered on the client.
+
+### Direct HTML (Text Encoding)
+
+Direct HTML content delivered as plain text:
+
+```typescript
+import { createUIResource } from "@mcp-ui/server";
+
+const resource = createUIResource({
+  uri: "ui://my-component/instance-1",
+  content: { type: "rawHtml", htmlString: "<p>Hello World</p>" },
+  encoding: "text",
+});
+```
+
+Output:
+
+```json
+{
+  "type": "resource",
+  "resource": {
+    "uri": "ui://my-component/instance-1",
+    "mimeType": "text/html",
+    "text": "<p>Hello World</p>"
+  }
+}
+```
+
+### Direct HTML (Base64 Blob)
+
+Direct HTML content delivered as a Base64-encoded blob:
+
+```typescript
+const resource = createUIResource({
+  uri: "ui://my-component/instance-2",
+  content: { type: "rawHtml", htmlString: "<h1>Complex HTML</h1>" },
+  encoding: "blob",
+});
+```
+
+Output:
+
+```json
+{
+  "type": "resource",
+  "resource": {
+    "uri": "ui://my-component/instance-2",
+    "mimeType": "text/html",
+    "blob": "PGgxPkNvbXBsZXggSFRNTDwvaDE+"
+  }
+}
+```
+
+### External URL (Text Encoding)
+
+External URL delivered as plain text for iframe embedding:
+
+```typescript
+const dashboardUrl = "https://my.analytics.com/dashboard/123";
+
+const resource = createUIResource({
+  uri: "ui://analytics-dashboard/main",
+  content: { type: "externalUrl", iframeUrl: dashboardUrl },
+  encoding: "text",
+});
+```
+
+Output:
+
+```json
+{
+  "type": "resource",
+  "resource": {
+    "uri": "ui://analytics-dashboard/main",
+    "mimeType": "text/uri-list",
+    "text": "https://my.analytics.com/dashboard/123"
+  }
+}
+```
+
+### External URL (Blob Encoding)
+
+External URL delivered as a Base64-encoded blob:
+
+```typescript
+const chartApiUrl = "https://charts.example.com/api?type=pie&data=1,2,3";
+
+const resource = createUIResource({
+  uri: "ui://live-chart/session-xyz",
+  content: { type: "externalUrl", iframeUrl: chartApiUrl },
+  encoding: "blob",
+});
+```
+
+Output:
+
+```json
+{
+  "type": "resource",
+  "resource": {
+    "uri": "ui://live-chart/session-xyz",
+    "mimeType": "text/uri-list",
+    "blob": "aHR0cHM6Ly9jaGFydHMuZXhhbXBsZS5jb20vYXBpP3R5cGU9cGllJmRhdGE9MSwyLDM="
+  }
+}
+```
+
+### Remote DOM Script
+
+Remote DOM script for building interactive components:
+
+```typescript
+const remoteDomScript = `
+  const button = document.createElement('ui-button');
+  button.setAttribute('label', 'Click me for a tool call!');
+  button.addEventListener('press', () => {
+    window.parent.postMessage({ 
+      type: 'tool', 
+      payload: { 
+        toolName: 'uiInteraction', 
+        params: { action: 'button-click', from: 'remote-dom' } 
+      } 
+    }, '*');
+  });
+  root.appendChild(button);
+`;
+
+const resource = createUIResource({
+  uri: "ui://remote-component/action-button",
+  content: {
+    type: "remoteDom",
+    script: remoteDomScript,
+    framework: "react", // or 'webcomponents'
+  },
+  encoding: "text",
+});
+```
+
+Output:
+
+```json
+{
+  "type": "resource",
+  "resource": {
+    "uri": "ui://remote-component/action-button",
+    "mimeType": "application/vnd.mcp-ui.remote-dom+javascript; framework=react",
+    "text": "\\n  const button = document.createElement('ui-button');\\n  button.setAttribute('label', 'Click me for a tool call!');\\n  button.addEventListener('press', () => {\\n    window.parent.postMessage({ type: 'tool', payload: { toolName: 'uiInteraction', params: { action: 'button-click', from: 'remote-dom' } } }, '*');\\n  });\\n  root.appendChild(button);\\n"
+  }
+}
+```
+
+## Usage
+
+UI resources are served through tools in your MCP server. This works with both standalone applications and projects where xmcp is integrated, like Next.js or Express.
+
+In xmcp, simply return the UI resource in your tool's `content` array:
+
+```typescript title="src/tools/get-ui.ts"
+import { type ToolMetadata } from "xmcp";
+import { uiResource } from "@/lib/ui";
+
+// ...schema and metadata
+
+export default function getUI() {
+  return {
+    content: [uiResource],
+  };
+}
+```
+
+
+# OpenAI (/docs/integrations/openai)
+
+## Overview
+
+xmcp provides first-class support for OpenAI's widget system, allowing you to create interactive tools that render rich UI components directly in ChatGPT.
+
+When you define OpenAI metadata in your tools, xmcp automatically splits metadata into tool-specific and resource-specific properties and generates widget resources for your tools.
+
+## Quick Start
+
+Scaffold a new OpenAI-ready project:
+
+#### React Template
+
+The `--ui` flag scaffolds a project with React support.
+
+```bash
+npx create-xmcp-app --ui
+```
+
+#### Standard Template
+
+The `--gpt` flag scaffolds a project with template support.
+
+```bash
+npx create-xmcp-app --gpt
+```
+
+## Approaches
+
+xmcp supports three approaches for creating OpenAI widgets:
+
+### 1. React Components (Recommended)
+
+Return React components directly for interactive, composable widgets:
+
+```typescript title="src/tools/counter.tsx"
+import { type ToolMetadata } from "xmcp";
+import { useState } from "react";
+
+export const metadata: ToolMetadata = {
+  name: "counter",
+  description: "Interactive counter widget",
+  _meta: {
+    openai: {
+      toolInvocation: {
+        invoking: "Loading counter...",
+        invoked: "Counter ready!",
+      },
+      widgetAccessible: true,
+    },
+  },
+};
+
+export default function Counter() {
+  const [count, setCount] = useState(0);
+
+  return (
+    <div>
+      <h1>Counter: {count}</h1>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+      <button onClick={() => setCount(count - 1)}>Decrement</button>
+      <button onClick={() => setCount(0)}>Reset</button>
+    </div>
+  );
+}
+```
+
+**How it works:**
+
+1. Install React: `npm install react react-dom`
+2. Tool handler returns React component
+3. Framework renders component to HTML
+4. Auto-generated resource serves the rendered output
+
+<Callout type="info">
+  When using React components, tool files must use the `.tsx` extension (not
+  `.ts`).
+</Callout>
+
+### 2. Direct HTML Return
+
+Return HTML directly from your tool handler for simple, static widgets:
+
+```typescript title="src/tools/get-map.ts"
+import { type ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "get-map",
+  description: "Display an interactive map",
+  _meta: {
+    openai: {
+      toolInvocation: {
+        invoking: "Loading map...",
+        invoked: "Map loaded!",
+      },
+      widgetAccessible: true,
+    },
+  },
+};
+
+export default async function getMap() {
+  return `
+    <div id="map-root"></div>
+    <link rel="stylesheet" href="https://cdn.example.com/map.css">
+    <script src="https://cdn.example.com/map.js"></script>
+  `;
+}
+```
+
+**How it works:**
+
+1. Tool handler returns HTML string
+2. Framework detects `_meta.openai` in metadata
+3. Framework auto-generates a resource at `ui://widget/{toolName}.html`
+4. The resource serves your HTML when accessed by ChatGPT
+
+### 3. Manual Resource Creation (Backwards Compatible)
+
+Create separate tool and resource files for full control:
+
+```typescript title="src/tools/get-map.ts"
+import { type ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "get-map",
+  description: "Display an interactive map",
+  _meta: {
+    openai: {
+      toolInvocation: {
+        invoking: "Loading map...",
+        invoked: "Map loaded!",
+      },
+      widgetAccessible: true,
+    },
+  },
+};
+
+export default async function getMap() {
+  return {
+    _meta: metadata._meta,
+  };
+}
+```
+
+```typescript title="src/resources/(ui)/widget/map.ts"
+import { type ResourceMetadata } from "xmcp";
+
+export const metadata: ResourceMetadata = {
+  name: "map",
+  title: "Interactive Map",
+  mimeType: "text/html+skybridge",
+};
+
+export default async function handler() {
+  return `
+    <div id="map-root"></div>
+    <link rel="stylesheet" href="https://cdn.example.com/map.css">
+    <script src="https://cdn.example.com/map.js"></script>
+  `;
+}
+```
+
+This approach is backwards compatible but requires manual resource creation. **We recommend using React components (approach #1) or direct HTML return (approach #2) instead.**
+
+## Widget Metadata Reference
+
+OpenAI metadata is defined under the `_meta.openai` key. The framework automatically splits this metadata into tool-specific and resource-specific properties.
+
+### Tool-Specific Metadata
+
+These properties are applied directly to the tool and control its behavior:
+
+**`toolInvocation`**
+
+Status messages displayed during tool execution:
+
+```typescript
+toolInvocation: {
+  invoking: "Loading map...",  // ≤64 characters
+  invoked: "Map loaded!"       // ≤64 characters
+}
+```
+
+* `invoking` - Message shown while the tool is executing
+* `invoked` - Message shown after the tool completes
+
+**`widgetAccessible`**
+
+Controls whether the widget can communicate back to the tool (default: `true`):
+
+```typescript
+widgetAccessible: true;
+```
+
+**`outputTemplate`**
+
+URI template for the widget resource. Auto-generated as `ui://widget/{toolName}.html` if not provided:
+
+```typescript
+outputTemplate: "ui://widget/my-custom-widget.html";
+```
+
+**`resultCanProduceWidget`**
+
+Indicates whether the tool result can produce a widget (default: `true`):
+
+```typescript
+resultCanProduceWidget: true;
+```
+
+### Resource-Specific Metadata
+
+These properties are applied to auto-generated widget resources and control how the widget is rendered:
+
+**`widgetDescription`**
+
+Human-readable summary of what the widget does:
+
+```typescript
+widgetDescription: "Interactive map with real-time location tracking";
+```
+
+**`widgetPrefersBorder`**
+
+UI rendering hint for whether the widget prefers a border:
+
+```typescript
+widgetPrefersBorder: true;
+```
+
+**`widgetCSP`**
+
+Content Security Policy configuration for external resources:
+
+```typescript
+widgetCSP: {
+  connect_domains: ["https://api.mapbox.com"],
+  resource_domains: ["https://cdn.mapbox.com", "https://fonts.googleapis.com"]
+}
+```
+
+* `connect_domains` - URLs allowed for fetch, WebSocket, and other connections (maps to `connect-src`)
+* `resource_domains` - URLs allowed for scripts, images, and fonts (maps to `script-src`, `img-src`, `font-src`)
+
+**`widgetDomain`**
+
+Optional dedicated subdomain for the widget:
+
+```typescript
+widgetDomain: "maps.example.com";
+```
+
+**`widgetState`**
+
+Initial state object passed to the widget:
+
+```typescript
+widgetState: {
+  theme: "dark",
+  zoom: 10,
+  center: { lat: 40.7128, lng: -74.0060 }
+}
+```
+
+## Complete Example
+
+Here's a complete example with all OpenAI metadata options:
+
+```typescript title="src/tools/analytics-dashboard.ts"
+import { type ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "analytics-dashboard",
+  description: "Display analytics dashboard",
+  annotations: {
+    title: "Analytics Dashboard",
+    readOnlyHint: true,
+  },
+  _meta: {
+    openai: {
+      // Tool-specific metadata
+      toolInvocation: {
+        invoking: "Loading dashboard...",
+        invoked: "Dashboard ready!",
+      },
+      widgetAccessible: true,
+      resultCanProduceWidget: true,
+
+      // Resource-specific metadata
+      widgetDescription: "Real-time analytics dashboard",
+      widgetPrefersBorder: true,
+      widgetCSP: {
+        connect_domains: [
+          "https://api.analytics.com",
+          "https://data.analytics.com",
+        ],
+        resource_domains: [
+          "https://cdn.analytics.com",
+          "https://fonts.googleapis.com",
+        ],
+      },
+      widgetDomain: "analytics.example.com",
+      widgetState: {
+        theme: "dark",
+        refreshInterval: 30000,
+      },
+    },
+  },
+};
+
+export default async function analyticsDashboard() {
+  // Return HTML for the widget - framework auto-generates the resource
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Analytics Dashboard</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+      </head>
+      <body>
+        <div id="dashboard">
+          <h1>Analytics Dashboard</h1>
+          <!-- Your widget content -->
+        </div>
+        <script src="https://cdn.analytics.com/widget.js"></script>
+      </body>
+    </html>
+  `;
+}
+```
+
+## CSP Configuration
+
+### CSP Directive Mapping
+
+The `widgetCSP` configuration maps to standard Content Security Policy directives:
+
+* `resource_domains` → `script-src`, `img-src`, `font-src`
+* `connect_domains` → `connect-src`
+
+**Example configuration:**
+
+```typescript
+widgetCSP: {
+  connect_domains: ["https://api.mapbox.com"],
+  resource_domains: ["https://cdn.mapbox.com", "https://fonts.googleapis.com"]
+}
+```
+
+**Generated CSP headers:**
+
+```
+script-src 'self' https://cdn.mapbox.com https://fonts.googleapis.com
+img-src 'self' data: https://cdn.mapbox.com https://fonts.googleapis.com
+font-src 'self' https://cdn.mapbox.com https://fonts.googleapis.com
+connect-src 'self' https://api.mapbox.com
+```
+
+## Return Values
+
+Your tool handler can return different types of values depending on your approach:
+
+### React Component (Recommended)
+
+Return a React component - framework renders and serves it:
+
+```typescript
+export default function MyTool() {
+  return (
+    <div>
+      <h1>Hello Widget!</h1>
+      <button onClick={() => alert("Clicked!")}>Click Me</button>
+    </div>
+  );
+}
+```
+
+### HTML String
+
+Return HTML directly - framework auto-generates the resource:
+
+```typescript
+export default async function myTool() {
+  return `
+    <div>
+      <h1>Hello Widget!</h1>
+      <script src="https://cdn.example.com/widget.js"></script>
+    </div>
+  `;
+}
+```
+
+### Metadata Only (Backwards Compatible)
+
+Return just metadata - requires manual resource creation:
+
+```typescript
+export default async function myTool() {
+  return {
+    _meta: metadata._meta,
+  };
+}
+```
+
+### Content with Metadata
+
+Return structured content with metadata:
+
+```typescript
+export default async function myTool() {
+  return {
+    content: [
+      {
+        type: "text",
+        text: "Widget rendered successfully",
+      },
+    ],
+    _meta: metadata._meta,
+  };
+}
+```
+
+## Troubleshooting
+
+### Widget Not Displaying
+
+Ensure you have:
+
+* Set `widgetAccessible: true` in your metadata
+* Returned valid HTML, React component, or metadata from your tool handler
+* Defined `_meta.openai` configuration in your tool metadata
+* Defined CSP domains if loading external resources
+
+
+# Polar (/docs/integrations/polar)
+
+## Overview
+
+The Polar plugin enables you to add paywalls with license key validation and track tool usage for your xmcp server using [Polar](https://polar.sh/).
+
+## Installation
+
+Install the Polar plugin:
+
+```bash
+npm install @xmcp-dev/polar
+```
+
+## Polar Setup
+
+Before integrating the plugin, set up your product on [Polar](https://polar.sh/):
+
+1. Create a new product with your desired payment configuration
+2. Add the **License Key** benefit to the product
+3. (Optional) Add a **Meter Credit** benefit to track and limit tool usage
+
+## Configuration
+
+Initialize the Polar provider to access validation methods:
+
+```typescript title="src/lib/polar.ts"
+import { PolarProvider } from "@xmcp-dev/polar";
+
+export const polar = PolarProvider.getInstance({
+  type: "sandbox", // or "production"
+  token: process.env.POLAR_TOKEN,
+  organizationId: process.env.POLAR_ORGANIZATION_ID,
+  productId: process.env.POLAR_PRODUCT_ID,
+});
+```
+
+### Configuration Options
+
+```typescript
+interface Configuration {
+  type?: "production" | "sandbox";
+  token: string;
+  organizationId: string;
+  productId: string;
+}
+```
+
+* `type` - Environment type (defaults to `"production"` if not set)
+* `token` - Polar authentication token
+* `organizationId` - Your Polar organization ID
+* `productId` - Your Polar product ID
+
+<Callout variant="info">
+  License keys must be provided in the `license-key` header. This header name is
+  not customizable.
+</Callout>
+
+## License Key Validation
+
+Validate license keys in your tools using the `validateLicenseKey` method:
+
+```typescript
+import { headers } from "xmcp/headers";
+
+const licenseKey = headers()["license-key"];
+const response = await polar.validateLicenseKey(licenseKey);
+```
+
+### Response Object
+
+The validation response contains:
+
+```typescript
+{
+  valid: boolean;
+  code: string;
+  message: string;
+}
+```
+
+### Handling Invalid Keys
+
+Return appropriate messages when validation fails:
+
+```typescript
+if (!response.valid) {
+  return response.message;
+}
+```
+
+This automatically prompts users with the checkout URL when the license key is invalid.
+
+## Usage Tracking
+
+Track tool usage by adding a meter credit benefit to your product and passing event objects during validation.
+
+### Meter Credit Setup
+
+Configure a meter credit benefit in your Polar product with the appropriate limits and tracking settings.
+
+### Tracking Events
+
+Pass an event object to `validateLicenseKey` to record usage:
+
+```typescript
+const event = {
+  name: "tool_call_event",
+  metadata: { tool_name: "tool_name", calls: 1 },
+};
+
+const response = await polar.validateLicenseKey(licenseKey, event);
+```
+
+The `metadata` field accepts any string or number values for flexible usage tracking.
+
+## Example
+
+Here's a complete example integrating license validation and usage tracking:
+
+```typescript title="src/tools/protected-tool.ts"
+import { PolarProvider } from "@xmcp-dev/polar";
+import { headers } from "xmcp/headers";
+
+export const polar = PolarProvider.getInstance({
+  type: "production",
+  token: process.env.POLAR_TOKEN,
+  organizationId: process.env.POLAR_ORGANIZATION_ID,
+  productId: process.env.POLAR_PRODUCT_ID,
+});
+
+export default async function protectedTool() {
+  const licenseKey = headers()["license-key"];
+
+  const response = await polar.validateLicenseKey(licenseKey, {
+    name: "tool_call_event",
+    metadata: { tool_name: "protectedTool", calls: 1 },
+  });
+
+  if (!response.valid) {
+    return response.message;
+  }
+
+  // Your tool logic here
+  return "Tool executed successfully";
+}
+```

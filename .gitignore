@@ -1,0 +1,13 @@
+node_modules
+.dist
+/dist
+.DS_Store
+.env
+.vscode
+.idea
+# Anchor / Rust
+/target
+/.anchor
+/.anchord
+/Anchor.toml.local
+**/*.tsbuildinfo
