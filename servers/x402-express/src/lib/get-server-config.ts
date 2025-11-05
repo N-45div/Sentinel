@@ -13,6 +13,7 @@ const ServerConfigSchema = z.object({
   facilitatorPublicKey: z.string().optional(),
   solanaRpcUrl: z.string().url().optional(),
   solanaNetwork: z.enum(['mainnet-beta', 'devnet', 'testnet', 'localnet']).optional(),
+  mcpUrl: z.string().url().optional(),
 });
 
 export type ServerConfig = z.infer<typeof ServerConfigSchema>;
@@ -32,6 +33,7 @@ export function getServerConfig(): ServerConfig {
       facilitatorPublicKey: process.env.FACILITATOR_PUBLIC_KEY,
       solanaRpcUrl: process.env.SOLANA_RPC_URL,
       solanaNetwork: process.env.SOLANA_NETWORK ?? 'devnet',
+      mcpUrl: process.env.MCP_URL ?? 'http://localhost:3001/mcp',
     });
 
     return config;

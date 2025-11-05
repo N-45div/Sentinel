@@ -51,6 +51,7 @@
   "license": "MIT",
   "dependencies": {
     "@solana/web3.js": "^1.87.6",
+    "@switchboard-xyz/switchboard-v2": "^0.0.174",
     "bs58": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { InferSchema, ToolMetadata } from "xmcp";
+import type { ToolMetadata } from "xmcp";
 import { Connection, PublicKey, Keypair } from "@solana/web3.js";
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import { PROGRAM_ID, RPC_URL } from "../types/sentinel";
@@ -13,7 +13,10 @@ export const metadata: ToolMetadata = {
   description: "Query on-chain reputation/stats of an agent",
 };
 
-export default async function handler({ authority }: InferSchema<typeof schema>) {
+const Args = z.object(schema);
+
+export default async function handler(input: unknown) {
+  const { authority } = Args.parse(input);
   const connection = new Connection(RPC_URL);
   // Minimal wallet shim (no Wallet constructor to avoid ESM/CJS issues)
   const kp = Keypair.generate();
