@@ -15,6 +15,7 @@ async function testMCPCall(url, method, params = {}) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Accept": "application/json",
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
@@ -46,13 +47,12 @@ async function main() {
   console.log("=".repeat(60));
 
   // Test 1: Health check
-  console.log("\n1️⃣  Testing Health Check");
+  console.log("\n1️⃣  Testing Proxy Public Endpoint");
   try {
-    const response = await fetch("http://localhost:8402/health");
-    const health = await response.json();
-    console.log("✅ Proxy server healthy");
-    console.log(`   Network: ${health.network}`);
-    console.log(`   Payment enabled: ${health.paymentEnabled}`);
+    const response = await fetch("http://localhost:8402/public");
+    const pub = await response.json();
+    console.log("✅ Proxy server reachable");
+    console.log(`   Message: ${pub.data?.message ?? "ok"}`);
   } catch (error) {
     console.log("❌ Proxy server not responding");
     return;
@@ -73,8 +73,15 @@ async function main() {
   console.log("\n3️⃣  Testing Sentinel Tool Call");
   console.log("   Note: Payment disabled without wallet, but tool execution works");
   
-  // Generate a test keypair address
-  const testAuthority = "11111111111111111111111111111111";
+  // Use demo wallet pubkey if available
+  let testAuthority = "11111111111111111111111111111111";
+  try {
+    const fs = await import('fs');
+    const { Keypair } = await import('@solana/web3.js');
+    const raw = fs.readFileSync('demo-agent-wallet.json','utf-8');
+    const sk = Uint8Array.from(JSON.parse(raw));
+    testAuthority = Keypair.fromSecretKey(sk).publicKey.toBase58();
+  } catch {}
   
   const queryResult = await testMCPCall(MCP_PROXY_URL, "tools/call", {
     name: "sentinel.query_reputation",
