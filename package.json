@@ -5,7 +5,8 @@
   "workspaces": [
     "servers/*",
     "sdk",
-    "agents/*"
+    "agents/*",
+    "tools/*"
   ],
   "scripts": {
     "build": "npm -ws run build",

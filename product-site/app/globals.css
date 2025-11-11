@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body, #__next { height: 100%; }
+body { @apply bg-bg text-white antialiased; }
+
+.container { @apply max-w-6xl mx-auto px-4; }
+.badge { @apply inline-flex items-center rounded-full border border-white/10 px-3 py-1 text-xs font-medium text-white/70 bg-white/5; }
+.card { @apply rounded-xl border border-white/10 bg-white/[0.03] p-6; }

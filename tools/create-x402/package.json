@@ -1,0 +1,27 @@
+{
+  "name": "create-sentinelx",
+  "version": "0.1.5",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "create-sentinelx": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist || true"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "minimist": "^1.2.8",
+    "@divij_web3dev/sentinel-sdk": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "rimraf": "^5.0.7"
+  }
+}

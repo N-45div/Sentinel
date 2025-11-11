@@ -1,0 +1,31 @@
+{
+  "name": "@divij_web3dev/sentinel-sdk",
+  "version": "0.1.5",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "zod": "^3.23.8",
+    "@solana/web3.js": "^1.95.0",
+    "@solana/spl-token": "^0.4.9",
+    "tweetnacl": "^1.0.3"
+  },
+  "peerDependencies": {
+    "@crossmint/wallets-sdk": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "rimraf": "^5.0.7"
+  }
+}
