@@ -22,15 +22,24 @@ End-to-end Solana Devnet payments with x402, TAP verification, and a scaffolder 
 Build autonomous, verifiable agents on Solana that are monetized via x402 and verified with TAP (Visa, RFC 9421). The gateway enforces payment, verifies TAP signatures, and forwards to your services.
 
 ```mermaid
-flowchart LR
-    A[Client (Solana signer)] -->|x402 Accept + pay| B[gateway-express]
-    B -->|verify with PayAI| C[(PayAI Facilitator)]
-    B -->|TAP verify (Visa)| D[(Public Key Registry)]
-    B -->|forward request| E[research-python-service]
-    B -->|optional /mcp/execute| F[XMCP server]
-    E -->|Parallel Beta Search| G[(Parallel API)]
-    E -->|fallback| H[(Task API)]
-    B -->|receipt| A
+graph LR
+  A[Client (Solana signer)]
+  B[gateway-express]
+  C[(PayAI Facilitator)]
+  D[(Public Key Registry - TAP (Visa))]
+  E[research-python-service]
+  F[XMCP server (/mcp/execute)]
+  G[(Parallel API)]
+  H[(Task API)]
+  
+  A --> B
+  B --> C
+  B --> D
+  B --> E
+  B --> F
+  E --> G
+  E --> H
+  B --> A
 ```
 
 ## Prerequisites
