@@ -4,12 +4,14 @@ import Image from "next/image";
 import visaPng from "@/svg/visa.png";
 import x402Png from "@/svg/x402-button-medium.png";
 import xmcpPng from "@/svg/xmcp.png";
+import payaiPng from "@/svg/payai.png";
 
 type Logo = { src: any; alt: string };
 
 const LOGOS: Logo[] = [
   { src: visaPng, alt: "Visa" },
   { src: x402Png, alt: "x402" },
+  { src: payaiPng, alt: "PayAI" },
   { src: xmcpPng, alt: "Model Context Protocol (XMCP)" },
 ];
 
